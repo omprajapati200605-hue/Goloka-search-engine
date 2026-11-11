@@ -3,6 +3,7 @@ import threading
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from app.api.main import create_app
 from app.config import Settings
@@ -247,3 +248,24 @@ def test_state_survives_restart(tmp_path):
             assert emb.embedded_texts == ["tomato sauce"]      # only the query was embedded
     finally:
         second.close()
+
+
+# ---------------------------------------------------------------- public-read mode
+def _keyed_client(tmp_path, public_read):
+    s = make_settings(tmp_path).model_copy(update={"api_key": SecretStr("secret"), "public_read": public_read})
+    return TestClient(create_app(s, SearchEngine(s, embedder=HashingEmbedder())))
+
+
+def test_public_read_lets_anyone_search_but_not_crawl(tmp_path):
+    with _keyed_client(tmp_path, True) as c:
+        assert c.get("/api/v1/search", params={"q": "hello"}).status_code == 200
+        assert c.get("/api/v1/documents").status_code == 200
+        assert c.post("/api/v1/crawl", json={"urls": ["https://example.org"]}).status_code == 401
+        assert c.post("/api/v1/index").status_code == 401
+        assert c.get("/api/v1/jobs").status_code == 401
+
+
+def test_without_public_read_search_needs_the_key(tmp_path):
+    with _keyed_client(tmp_path, False) as c:
+        assert c.get("/api/v1/search", params={"q": "hello"}).status_code == 401
+        assert c.get("/api/v1/search", params={"q": "hello"}, headers={"X-API-Key": "secret"}).status_code == 200

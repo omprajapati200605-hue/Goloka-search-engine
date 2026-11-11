@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.api.errors import register_error_handlers
-from app.api.routes import public_router, router
+from app.api.routes import public_router, read_router, router
 from app.config import Settings, get_settings
 from app.crawler.url_utils import Resolver, system_resolver
 from app.engine import SearchEngine
@@ -76,6 +76,7 @@ def create_app(settings: Settings | None = None, engine: SearchEngine | None = N
         app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["GET", "POST"],
                            allow_headers=["X-API-Key", "Content-Type"])
     app.include_router(public_router)
+    app.include_router(read_router)
     app.include_router(router)
 
     @app.get("/", include_in_schema=False)

@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
     log_level: str = "INFO"
     api_key: SecretStr | None = None              # when set, every endpoint except /health needs X-API-Key
+    public_read: bool = False                     # with an API key set: let anyone search/read; writes still need the key
     cors_origins: list[str] = Field(default_factory=list)   # JSON list, e.g. ["http://localhost:3000"]
 
     @model_validator(mode="after")

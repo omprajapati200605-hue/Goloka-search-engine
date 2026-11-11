@@ -5,3 +5,11 @@ __pycache__/
 .env
 data/
 *.db
+*.db-shm
+*.db-wal
+*.sqlite-shm
+*.sqlite-wal
+*.db-journal
+__pycache__/
+.venv/
+.env

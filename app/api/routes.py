@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, Request, Response
 
 from app import __version__
-from app.api.auth import require_api_key
+from app.api.auth import require_api_key, require_read_access
 from app.api.errors import ApiError
 from app.api.schemas import (CrawlRequest, JobList, JobOut, JobProgress, JobUrl, JobUrlList, DocumentCounts, DocumentDetail, DocumentList, DocumentSummary, ErrorResponse,
                              HealthResponse, IndexCounts, IndexResponse, ResultItem, SearchResponseOut,
@@ -19,6 +19,7 @@ from app.search.hybrid import SearchResponse
 from app.storage.repository import Document
 
 router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_api_key)])   # protected when an API key is set
+read_router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_read_access)])   # search + document reads
 public_router = APIRouter(prefix="/api/v1")                                       # health: always open
 
 Q = Query(..., min_length=1, max_length=500, description="The search query")
@@ -103,7 +104,7 @@ def index_documents(request: Request) -> IndexResponse:
 _search_errors = {422: {"model": ErrorResponse, "description": "Invalid parameters"}}
 
 
-@router.get("/search", response_model=SearchResponseOut, tags=["search"], responses=_search_errors,
+@read_router.get("/search", response_model=SearchResponseOut, tags=["search"], responses=_search_errors,
             summary="Hybrid search (BM25 + semantic + title)")
 def search(request: Request, q: str = Q, k: int = K,
            method: Literal["weighted", "rrf"] = Query("weighted", description="Fusion method"),
@@ -111,20 +112,20 @@ def search(request: Request, q: str = Q, k: int = K,
     return _search_out(_engine(request).search(_query(q), k, method=method, min_score=min_score))
 
 
-@router.get("/search/keyword", response_model=SearchResponseOut, tags=["search"], responses=_search_errors,
+@read_router.get("/search/keyword", response_model=SearchResponseOut, tags=["search"], responses=_search_errors,
             summary="Keyword search (BM25 only)")
 def search_keyword(request: Request, q: str = Q, k: int = K):
     return _search_out(_engine(request).search_keyword(_query(q), k))
 
 
-@router.get("/search/semantic", response_model=SearchResponseOut, tags=["search"], responses=_search_errors,
+@read_router.get("/search/semantic", response_model=SearchResponseOut, tags=["search"], responses=_search_errors,
             summary="Semantic search (embeddings only)")
 def search_semantic(request: Request, q: str = Q, k: int = K,
                     min_score: float | None = Query(None, ge=-1, le=1, description="Minimum cosine similarity")):
     return _search_out(_engine(request).search_semantic(_query(q), k, min_score=min_score))
 
 
-@router.get("/documents", response_model=DocumentList, tags=["documents"], summary="List stored documents")
+@read_router.get("/documents", response_model=DocumentList, tags=["documents"], summary="List stored documents")
 def list_documents(request: Request, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
                    domain: str | None = Query(None, description="Only documents from this domain"),
                    status: str | None = Query(None, description="Filter by crawl status, e.g. ok or gone")):
@@ -132,7 +133,7 @@ def list_documents(request: Request, limit: int = Query(50, ge=1, le=200), offse
     return DocumentList(items=[DocumentSummary(**_summary(d)) for d in docs], total=total, limit=limit, offset=offset)
 
 
-@router.get("/documents/{document_id}", response_model=DocumentDetail, tags=["documents"],
+@read_router.get("/documents/{document_id}", response_model=DocumentDetail, tags=["documents"],
             summary="Get one document with its full text",
             responses={404: {"model": ErrorResponse, "description": "No such document"}})
 def get_document(request: Request, document_id: str):
