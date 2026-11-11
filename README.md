@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # GOLOKA
 
 A backend search engine core in Python. It crawls web pages, extracts their text, stores them in SQLite, and searches them
@@ -153,3 +154,6 @@ docs/                  API.md, openapi.json
 * **No built-in rate limiting or user accounts.** The optional API key is a single shared secret. Do not expose the port to the
   internet without putting it behind a proper gateway. By default it listens on 127.0.0.1 only.
 * `/docs` and `/openapi.json` stay open even when an API key is set.
+=======
+# goloka-search-engine
+>>>>>>> 93749ffabf9edc08d0b5ce21114ce71731eb0ec3
