@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Goloka search</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="top">
+      <a class="brand" href="#search">Goloka</a>
+      <nav aria-label="Main">
+        <a href="#search" data-view="search">Search</a>
+        <a href="#add" data-view="add">Add pages</a>
+      </nav>
+      <div class="status" id="status" aria-live="polite"></div>
+    </header>
+
+    <main>
+      <section id="view-search" aria-labelledby="search-heading">
+        <h1 id="search-heading" class="sr-only">Search your pages</h1>
+        <form id="search-form" role="search" autocomplete="off">
+          <label class="sr-only" for="q">Search the pages you have added</label>
+          <div class="searchbar">
+            <input id="q" name="q" type="search" maxlength="500" placeholder="Search the pages you have added" required>
+            <button type="submit" class="primary">Search</button>
+          </div>
+          <fieldset class="modes">
+            <legend class="sr-only">Match by</legend>
+            <label><input type="radio" name="mode" value="both" checked><span>Keywords and meaning</span></label>
+            <label><input type="radio" name="mode" value="keyword"><span>Keywords only</span></label>
+            <label><input type="radio" name="mode" value="semantic"><span>Meaning only</span></label>
+          </fieldset>
+          <details class="options">
+            <summary>Options</summary>
+            <div class="option-grid">
+              <label>Combine scores
+                <select id="method" name="method">
+                  <option value="weighted">By weight</option>
+                  <option value="rrf">By rank</option>
+                </select>
+              </label>
+              <label>Results
+                <select id="count" name="count">
+                  <option>5</option><option selected>10</option><option>20</option><option>50</option>
+                </select>
+              </label>
+              <label class="check"><input type="checkbox" id="weak"><span>Hide weak matches (overall score under 0.2)</span></label>
+            </div>
+          </details>
+        </form>
+        <p class="tryline" id="tryline">Try
+          <button type="button" class="linklike" data-query="who is the first great mathematician">who is the first great mathematician</button>
+          or
+          <button type="button" class="linklike" data-query="how to handle errors">how to handle errors</button>
+        </p>
+        <div id="notice" role="status"></div>
+        <div id="results" aria-live="polite"></div>
+      </section>
+
+      <section id="view-add" hidden aria-labelledby="add-heading">
+        <h1 id="add-heading" class="page-title">Add pages</h1>
+        <p class="lede">Goloka only searches pages you add here. It reads the page you give it and the pages it links to on the same site, obeys robots.txt, and keeps nothing else.</p>
+        <form id="crawl-form" novalidate>
+          <label class="field">Start at this address
+            <input id="crawl-url" type="url" placeholder="https://example.org/" required>
+          </label>
+          <div class="field-row">
+            <label class="field">Most pages
+              <input id="crawl-pages" type="number" min="1" max="1000" value="30">
+            </label>
+            <label class="field">Link depth
+              <input id="crawl-depth" type="number" min="0" max="6" value="1">
+            </label>
+          </div>
+          <p class="help">Depth 0 reads only the first page. Depth 1 also reads the pages it links to.</p>
+          <div class="actions">
+            <button type="submit" class="primary">Start crawl</button>
+            <button type="button" class="linklike" id="preset-math">Fill in: History of mathematics (Wikipedia)</button>
+          </div>
+          <p class="help">Some sites refuse crawlers that do not identify themselves. If a crawl fails with HTTP 403, set GOLOKA_USER_AGENT in your .env file to a name with your contact details, then restart the server.</p>
+          <p id="crawl-message" role="alert"></p>
+        </form>
+        <h2 class="section-title">Recent crawls</h2>
+        <div id="jobs"></div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
