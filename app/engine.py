@@ -17,11 +17,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.config import Settings
-from app.search.embedder import Embedder, EmbeddingError, SentenceTransformerEmbedder
+from app.search.embedder import Embedder, EmbeddingError
 from app.search.hybrid import HybridConfig, HybridSearcher, SearchResponse
 from app.search.keyword_index import KeywordIndex, default_index_path
-from app.search.vector_index import VectorIndex, default_vector_path
-from app.storage.chunk_store import ChunkStore
 from app.storage.repository import DocumentRepository
 
 log = logging.getLogger("goloka.engine")
@@ -50,17 +48,28 @@ class SearchEngine:
         self.settings = settings
         self.repo = DocumentRepository(settings.db_path)
         self.keyword_path = default_index_path(settings)
-        self.vector_path = default_vector_path(settings)
         self.keyword = KeywordIndex.load(self.keyword_path)
-        self.embedder: Embedder = embedder or SentenceTransformerEmbedder(settings.embedding_model)
-        self.chunk_store = ChunkStore(settings.db_path)
-        self.vectors = VectorIndex.load(
-            self.vector_path, self.embedder, self.chunk_store,
-            chunk_size_words=settings.chunk_size_words, chunk_overlap_words=settings.chunk_overlap_words)
+        self.semantic_enabled = settings.semantic_enabled
+        if self.semantic_enabled:
+            # imported here so that a keyword-only server never loads faiss or the AI model libraries
+            from app.search.embedder import SentenceTransformerEmbedder
+            from app.search.vector_index import VectorIndex, default_vector_path
+            from app.storage.chunk_store import ChunkStore
+            self.vector_path = default_vector_path(settings)
+            self.embedder: Embedder | None = embedder or SentenceTransformerEmbedder(settings.embedding_model)
+            self.chunk_store = ChunkStore(settings.db_path)
+            self.vectors = VectorIndex.load(
+                self.vector_path, self.embedder, self.chunk_store,
+                chunk_size_words=settings.chunk_size_words, chunk_overlap_words=settings.chunk_overlap_words)
+        else:                                          # low-memory mode: BM25 keyword search only
+            self.vector_path = None
+            self.embedder = None
+            self.chunk_store = None
+            self.vectors = None
         self.searcher = HybridSearcher(self.repo, self.keyword, self.vectors, HybridConfig.from_settings(settings))
         self._lock = threading.RLock()
         self._index_gate = threading.Lock()
-        self.semantic_status = "not_loaded"          # not_loaded | ready | unavailable
+        self.semantic_status = "not_loaded" if self.semantic_enabled else "disabled"   # not_loaded | ready | unavailable | disabled
         self.last_semantic_error: str | None = None
         self.last_index: IndexReport | None = None
 
@@ -79,17 +88,18 @@ class SearchEngine:
                                  "removed": kw.removed}
 
                 vector_stats: dict[str, int] | None = None
-                try:
-                    vs = self.vectors.sync(self.repo)
-                    self.vectors.save(self.vector_path)
-                    vector_stats = {"added": vs.added, "updated": vs.updated, "unchanged": vs.unchanged,
-                                    "removed": vs.removed, "empty": vs.empty, "failed": vs.failed}
-                    self.semantic_status, self.last_semantic_error = "ready", None
-                    if vs.failed:
-                        warnings.append(f"{vs.failed} document(s) could not be embedded; see server log")
-                except EmbeddingError as exc:
-                    self.semantic_status, self.last_semantic_error = "unavailable", str(exc)
-                    warnings.append(f"semantic indexing skipped ({exc}); keyword search is up to date")
+                if self.vectors is not None:
+                    try:
+                        vs = self.vectors.sync(self.repo)
+                        self.vectors.save(self.vector_path)
+                        vector_stats = {"added": vs.added, "updated": vs.updated, "unchanged": vs.unchanged,
+                                        "removed": vs.removed, "empty": vs.empty, "failed": vs.failed}
+                        self.semantic_status, self.last_semantic_error = "ready", None
+                        if vs.failed:
+                            warnings.append(f"{vs.failed} document(s) could not be embedded; see server log")
+                    except EmbeddingError as exc:
+                        self.semantic_status, self.last_semantic_error = "unavailable", str(exc)
+                        warnings.append(f"semantic indexing skipped ({exc}); keyword search is up to date")
 
                 self._mark_fully_indexed()
                 stats = self.repo.stats()
@@ -105,17 +115,21 @@ class SearchEngine:
 
     def _mark_fully_indexed(self) -> None:
         """A document counts as indexed only if BOTH indexes hold its current content."""
-        signature = self.vectors.signature
+        signature = self.vectors.signature if self.vectors is not None else None
         for doc in self.repo.needs_indexing():
             in_keyword = self.keyword.content_hash_of(doc.id) == doc.content_hash
             has_nothing_to_embed = not (doc.text or "").strip() and not (doc.title or "").strip()
-            in_vectors = has_nothing_to_embed or self.chunk_store.document_state(doc.id) == (doc.content_hash, signature)
+            in_vectors = (self.vectors is None or has_nothing_to_embed
+                          or self.chunk_store.document_state(doc.id) == (doc.content_hash, signature))
             if in_keyword and in_vectors:
                 self.repo.mark_indexed(doc.id, doc.content_hash)
 
     # ------------------------------------------------------------------ searching
     def _finish(self, response: SearchResponse) -> SearchResponse:
-        if any("semantic search unavailable" in w for w in response.warnings):
+        if self.vectors is None:
+            # keyword-only mode is a deliberate setting, not a problem worth warning about on every search
+            response.warnings[:] = [w for w in response.warnings if "semantic search is not configured" not in w]
+        elif any("semantic search unavailable" in w for w in response.warnings):
             self.semantic_status = "unavailable"
             self.last_semantic_error = next(w for w in response.warnings if "semantic search unavailable" in w)
         elif (response.mode in ("hybrid", "semantic") and response.query.strip() and len(self.vectors) > 0
@@ -147,7 +161,7 @@ class SearchEngine:
         return {
             "stats": stats,
             "keyword_documents": len(self.keyword),
-            "vector_chunks": len(self.vectors),
+            "vector_chunks": len(self.vectors) if self.vectors is not None else 0,
             "semantic_status": self.semantic_status,
             "semantic_error": self.last_semantic_error,
             "embedding_model": self.settings.embedding_model,
@@ -156,6 +170,8 @@ class SearchEngine:
 
     def close(self) -> None:
         for closable in (self.chunk_store, self.repo):
+            if closable is None:
+                continue
             try:
                 closable.close()
             except Exception:  # noqa: BLE001 - closing must never raise during shutdown

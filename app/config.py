@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     jobs_max_pending: int = Field(20, ge=1)      # queued + running crawl jobs accepted at once
 
     # Semantic search
+    semantic_enabled: bool = True                 # false = keyword-only: no AI model, no faiss, fits in 512 MB
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     chunk_size_words: int = Field(200, ge=20)
     chunk_overlap_words: int = Field(40, ge=0)

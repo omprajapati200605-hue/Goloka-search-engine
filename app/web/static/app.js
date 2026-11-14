@@ -16,6 +16,7 @@
     pollTimer: null,
     failedUrls: new Map(),   // job id -> list of failed urls (kept across re-renders)
     apiKey: "",
+    owner: false,            // true once the server accepts this browser for adding pages
   };
   try { state.apiKey = sessionStorage.getItem("goloka-api-key") || ""; } catch (_) { /* storage blocked: fine */ }
 
@@ -80,10 +81,11 @@
   function keyForm(retry) {
     const input = h("input", { type: "password", "aria-label": "API key", autocomplete: "off", required: true });
     return h("form", {
-      onsubmit: (event) => {
+      onsubmit: async (event) => {
         event.preventDefault();
         state.apiKey = input.value.trim();
         try { sessionStorage.setItem("goloka-api-key", state.apiKey); } catch (_) { /* ignore */ }
+        await checkOwner();
         retry();
       },
     }, input, h("button", { type: "submit", class: "primary" }, "Save key"));
@@ -109,10 +111,13 @@
     const docs = state.health.documents;
     const ok = (docs.by_status && docs.by_status.ok) || 0;
     const semantic = state.health.indexes.semantic;
+    const keywordOnly = semantic.status === "disabled";
+    $("#modes").hidden = keywordOnly;               // no choice to make on a keyword-only server
     const meaning = { ready: "ready", not_loaded: "loads on first use", unavailable: "unavailable" }[semantic.status] || semantic.status;
-    clear(box).append(h("span", {}, `${plural(ok, "page")} added`), h("span", {}, `Search by meaning: ${meaning}`));
+    clear(box).append(h("span", {}, `${plural(ok, "page")} added`));
+    if (!keywordOnly) box.append(h("span", {}, `Search by meaning: ${meaning}`));
     if (semantic.status === "unavailable" && semantic.last_error) box.append(h("span", {}, semantic.last_error));
-    if (docs.pending_indexing > 0) {
+    if (docs.pending_indexing > 0 && state.owner) {
       const button = h("button", { type: "button", class: "linklike" }, `Index ${plural(docs.pending_indexing, "new page")}`);
       button.addEventListener("click", () => runIndex(button));
       box.append(button);
@@ -240,7 +245,9 @@
       const ok = health ? (health.documents.by_status.ok || 0) : null;
       if (ok === 0) {
         results.append(h("div", { class: "empty" }, h("h2", {}, "No pages to search yet"),
-          h("p", {}, "Add pages first, then search them. "), h("a", { href: "#add" }, "Add pages")));
+          state.owner
+            ? [h("p", {}, "Add pages first, then search them. "), h("a", { href: "#add" }, "Add pages")]
+            : h("p", {}, "The site owner has not added any pages yet.")));
       } else {
         results.append(h("div", { class: "empty" }, h("h2", {}, `Nothing found for “${query}”`),
           h("p", {}, `Goloka searched ${ok == null ? "your" : plural(ok, "page")} and found no match. ` +
@@ -344,6 +351,44 @@
     }
   }
 
+  // ---------------------------------------------------------------- owner access
+  // Adding pages is for the site owner only. The server enforces this (it answers 401 to everyone without the
+  // key); the page just hides the screen so visitors are not shown something they cannot use.
+  async function checkOwner() {
+    try {
+      await api("/jobs?limit=1");
+      state.owner = true;
+    } catch (_) {
+      state.owner = false;
+    }
+    $("#nav-add").hidden = !state.owner;
+    const button = $("#owner-btn");
+    button.hidden = state.owner && !state.apiKey;     // server has no key set: nobody signs in or out
+    button.textContent = state.owner ? "Sign out" : "Owner sign-in";
+    return state.owner;
+  }
+
+  function ownerPrompt() {
+    const retry = () => {
+      if (state.owner) { if ((location.hash || "").startsWith("#add")) route(); else location.hash = "#add"; return; }
+      state.apiKey = "";
+      try { sessionStorage.removeItem("goloka-api-key"); } catch (_) { /* ignore */ }
+      clearNotices();
+      showNotice("That key was not accepted.", "error", keyForm(retry));
+    };
+    showNotice("Adding pages is for the site owner. Enter the owner key to continue.", null, keyForm(retry));
+  }
+
+  function ownerButton() {
+    if (state.owner) {
+      state.apiKey = "";
+      try { sessionStorage.removeItem("goloka-api-key"); } catch (_) { /* ignore */ }
+      checkOwner().then(() => { if ((location.hash || "").startsWith("#add")) route(); else refreshStatus(); });
+    } else {
+      if ((location.hash || "").startsWith("#add")) route(); else location.hash = "#add";
+    }
+  }
+
   // ---------------------------------------------------------------- views and routing
   function showView(name) {
     $("#view-search").hidden = name !== "search";
@@ -356,6 +401,14 @@
 
   function route() {
     const hash = location.hash || "#search";
+    if (hash.startsWith("#add") && !state.owner) {
+      showView("search");
+      document.title = "Owner sign-in - Goloka";
+      clear($("#results"));
+      clearNotices();
+      ownerPrompt();
+      return;
+    }
     if (hash.startsWith("#add")) {
       showView("add");
       document.title = "Add pages - Goloka";
@@ -398,8 +451,9 @@
       $("#crawl-pages").value = "40";
       $("#crawl-depth").value = "1";
     });
+    $("#owner-btn").addEventListener("click", ownerButton);
     window.addEventListener("hashchange", route);
-    refreshStatus().then(route);
+    checkOwner().then(refreshStatus).then(route);
   }
 
   init();

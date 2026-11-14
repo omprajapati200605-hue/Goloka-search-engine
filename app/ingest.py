@@ -36,9 +36,16 @@ class IngestStats:
         return {k: getattr(self, k) for k in ("created", "updated", "unchanged", "duplicate", "empty")}
 
 
+# Parsing a large page (Wikipedia pages are 0.5-2 MB of HTML) briefly needs ~75 MB. Several crawl workers parsing
+# at once would multiply that and run a 512 MB server out of memory, so parsing is done one page at a time. It
+# costs nothing in speed: parsing is CPU-bound and already shares one core.
+_PARSE_LOCK = threading.Lock()
+
+
 def ingest_page(repo: DocumentRepository, page: PageResult) -> UpsertResult:
     """Extract and store one crawled page (synchronous)."""
-    extracted = extract_page(page.html, page.url, final_url=page.final_url, crawled_at=page.fetched_at)
+    with _PARSE_LOCK:
+        extracted = extract_page(page.html, page.url, final_url=page.final_url, crawled_at=page.fetched_at)
     return repo.upsert_page(extracted)
 
 

@@ -23,15 +23,17 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.config import Settings
 from app.search.embedder import EmbeddingError
 from app.search.keyword_index import KeywordIndex
 from app.search.snippet import build_snippet
 from app.search.tokenizer import analyze_query
-from app.search.vector_index import VectorIndex
 from app.storage.repository import STATUS_OK, DocumentRepository
+
+if TYPE_CHECKING:                      # keeps faiss out of keyword-only (low-memory) servers
+    from app.search.vector_index import VectorIndex
 
 NORMALIZATIONS = ("max", "min_max", "zscore", "clamp")
 METHODS = ("weighted", "rrf")

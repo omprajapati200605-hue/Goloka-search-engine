@@ -102,3 +102,31 @@ async def test_storage_failure_does_not_stop_crawl(mock, settings, resolver, rep
     summary = await crawler.crawl("https://site.test/")
     await crawler.aclose()
     assert summary.pages_failed == 2 and all("on_page failed" in o.detail for o in summary.outcomes)
+
+
+def test_pages_are_parsed_one_at_a_time(monkeypatch):
+    """Concurrent crawl workers must not parse several large pages at once (memory on small servers)."""
+    import threading, time
+    from app import ingest as mod
+    active, peak, lock = [0], [0], threading.Lock()
+
+    def slow_extract(*a, **k):
+        with lock:
+            active[0] += 1; peak[0] = max(peak[0], active[0])
+        time.sleep(0.05)
+        with lock:
+            active[0] -= 1
+        raise RuntimeError("stop after measuring")
+
+    monkeypatch.setattr(mod, "extract_page", slow_extract)
+    page = type("P", (), {"html": "", "url": "https://x.test/", "final_url": None, "fetched_at": 0})()
+    threads = [threading.Thread(target=lambda: _swallow(mod.ingest_page, None, page)) for _ in range(4)]
+    [t.start() for t in threads]; [t.join() for t in threads]
+    assert peak[0] == 1
+
+
+def _swallow(fn, *a):
+    try:
+        fn(*a)
+    except RuntimeError:
+        pass

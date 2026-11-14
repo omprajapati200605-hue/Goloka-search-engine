@@ -14,7 +14,7 @@
       <a class="brand" href="#search">Goloka</a>
       <nav aria-label="Main">
         <a href="#search" data-view="search">Search</a>
-        <a href="#add" data-view="add">Add pages</a>
+        <a href="#add" data-view="add" id="nav-add" hidden>Add pages</a>
       </nav>
       <div class="status" id="status" aria-live="polite"></div>
     </header>
@@ -28,7 +28,7 @@
             <input id="q" name="q" type="search" maxlength="500" placeholder="Search the pages you have added" required>
             <button type="submit" class="primary">Search</button>
           </div>
-          <fieldset class="modes">
+          <fieldset class="modes" id="modes">
             <legend class="sr-only">Match by</legend>
             <label><input type="radio" name="mode" value="both" checked><span>Keywords and meaning</span></label>
             <label><input type="radio" name="mode" value="keyword"><span>Keywords only</span></label>
@@ -88,6 +88,7 @@
         <div id="jobs"></div>
       </section>
     </main>
+    <footer class="foot"><button type="button" class="linklike" id="owner-btn">Owner sign-in</button></footer>
   </div>
 </body>
 </html>

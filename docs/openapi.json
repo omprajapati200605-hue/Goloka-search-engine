@@ -926,7 +926,7 @@
             "type": "string"
           },
           "status": {
-            "description": "not_loaded | ready | unavailable",
+            "description": "not_loaded | ready | unavailable | disabled",
             "title": "Status",
             "type": "string"
           }

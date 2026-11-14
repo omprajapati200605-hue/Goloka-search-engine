@@ -9,7 +9,7 @@ test embedder, so your numbers will differ. The shapes are exact.
 ## Conventions
 
 **Authentication.** Off by default. If the server sets `GOLOKA_API_KEY`, every endpoint except `GET /api/v1/health`, `/docs` and
-`/openapi.json` needs the header `X-API-Key: <key>`. Missing or wrong key gives `401`.
+`/openapi.json` needs the header `X-API-Key: <key>`. Missing or wrong key gives `401`. With `GOLOKA_PUBLIC_READ=true` the search and document-read endpoints (`GET /search*`, `GET /documents*`) are also open; `POST /index`, `POST /crawl` and `/jobs*` always need the key.
 
 **Errors.** Every error has the same shape:
 ```json

@@ -136,3 +136,5 @@ progress::-moz-progress-bar { background: var(--lapis); }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+.foot { margin-top: 3rem; padding-top: 1rem; font-size: 0.85rem; color: var(--ink-soft); }

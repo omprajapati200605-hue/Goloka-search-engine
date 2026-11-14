@@ -68,3 +68,10 @@ def test_page_works_without_api_key_header_and_api_still_protected(tmp_path):
             assert c.get("/api/v1/documents").status_code == 401
     finally:
         engine.close()
+
+
+def test_add_pages_link_is_hidden_until_the_owner_signs_in():
+    html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    assert re.search(r'<a[^>]*id="nav-add"[^>]*\shidden', html), "the Add pages link must start hidden"
+    js = (WEB_DIR / "static" / "app.js").read_text(encoding="utf-8")
+    assert "checkOwner" in js and "ownerPrompt" in js

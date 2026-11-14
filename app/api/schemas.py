@@ -87,7 +87,7 @@ class DocumentCounts(BaseModel):
 
 class SemanticStatus(BaseModel):
     model: str
-    status: str = Field(description="not_loaded | ready | unavailable")
+    status: str = Field(description="not_loaded | ready | unavailable | disabled")
     last_error: str | None
 
 
